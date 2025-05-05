@@ -10,6 +10,15 @@ from itertools import groupby
 # Load Model
 model = YOLO("Knight Vision Detection Model (YOLOv8l)/weights/best.pt")
 
+# Constants
+TARGET_SIZE = (416, 416)
+TRAPEZIUM_CORNERS = np.array([
+    [74, 20],    # Top Left
+    [316, 27],   # Top Right
+    [371, 341],  # Bottom Right
+    [37, 346]    # Bottom Left
+], dtype=np.float32)
+
 # ===== Homography and Coordinate Mapping =====
 def compute_homography(source_points):
     target_points = np.array([[0, 0], [8, 0], [8, 8], [0, 8]], dtype=np.float32)
@@ -203,9 +212,10 @@ class ChessDetectionResult:
     def visualize(self):
         visualize_grid(self.image, self.detections, self.homography, self.orientation)
 
-def detect_chess_board(image_path, corners, orientation):
-    H = compute_homography(np.array(corners, dtype=np.float32))
+def detect_chess_board(image_path, orientation):
     img = Image.open(image_path).convert("RGB")
+    img = img.resize(TARGET_SIZE, Image.LANCZOS)
+    H = compute_homography(TRAPEZIUM_CORNERS)
     results = model.predict(image_path, imgsz=640)
 
     detections = []
@@ -232,6 +242,6 @@ def detect_chess_board(image_path, corners, orientation):
 
     return ChessDetectionResult(img, detections, H, orientation)
 # Example Usage:
-# result = detect_chess_board("board.jpg", [[x1,y1], [x2,y2], [x3,y3], [x4,y4]], "left")
+# result = detect_chess_board("board.jpg", "left")
 # print(result.fen)
 # result.visualize()
