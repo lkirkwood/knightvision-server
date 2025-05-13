@@ -1,11 +1,23 @@
+# ===== OS-specific =====
 .DS_Store
+
+# ===== IDE/project config =====
 .idea
+
+# ===== Logs and temp =====
 *.log
 tmp/
 
+# ===== Python cache and build artefacts =====
 *.py[cod]
 *.egg
+**/*.egg-info
 build
 htmlcov
 
-**/*.egg-info
+# ===== Virtual environment =====
+venv/
+
+# ===== Model File(s) =====
+*.pt
+*.pth

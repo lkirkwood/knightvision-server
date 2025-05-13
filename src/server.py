@@ -7,15 +7,19 @@ import os
 
 app = Flask(__name__)
 
-if not ("MODEL_PATH" in app.config and os.path.isfile(app.config["MODEL_FILE"])):
-    raise RuntimeError("Missing MODEL_PATH configuration value.")
+# ===== Load Model from Environment Variable =====
+model_path = os.getenv("MODEL_PATH")
 
-app.config["MODEL"] = YOLO(app.config["MODEL_PATH"])
+if not model_path or not os.path.isfile(model_path):
+    raise RuntimeError("Missing or invalid MODEL_PATH environment variable.")
 
+app.config["MODEL_PATH"] = model_path
+app.config["MODEL"] = YOLO(model_path)
 
+# ===== Endpoint: Parse Board and Return FEN =====
 @app.post("/parse-board")
 def parse_board(req: Request) -> Response:
-    if req.mimetype not in ("image/png", "image/jpg"):
+    if req.mimetype not in ("image/png", "image/jpg", "image/jpeg"):
         return Response(
             f"Unexpected MIME type {req.mimetype}; Expected PNG or JPG", 400
         )
@@ -23,8 +27,10 @@ def parse_board(req: Request) -> Response:
     if "orientation" not in req.args:
         return Response("Expected a board orientation parameter.", 400)
 
-    result = detect_chess_board(
-        app.config["MODEL"], Image.open(BytesIO(req.data)), req.args["orientation"]
-    )
-
-    return Response(result.fen, 200)
+    try:
+        result = detect_chess_board(
+            app.config["MODEL"], Image.open(BytesIO(req.data)), req.args["orientation"]
+        )
+        return Response(result.fen, 200)
+    except Exception as e:
+        return Response(f"Error processing image: {e}", 500)
