@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import cv2
 from itertools import groupby
+import chess
+import chess.polyglot
+from pathlib import Path
+import json
 
 # Constants
 TARGET_SIZE = (416, 416)
@@ -18,6 +22,9 @@ TRAPEZIUM_CORNERS = np.array(
     ],
     dtype=np.float32,
 )
+BOOK_PATH = Path("books/perfect2017.bin")
+ECO_LOOKUP_PATH = Path("eco_openings.json")
+eco_openings = json.loads(ECO_LOOKUP_PATH.read_text(encoding="utf-8"))
 
 
 # ===== Homography and Coordinate Mapping =====
@@ -320,7 +327,126 @@ def detect_chess_board(model: YOLO, img: Image.Image, orientation):
     return ChessDetectionResult(processed_img, detections, H, orientation)
 
 
-# Example Usage:
-# result = detect_chess_board("board.jpg", "left")
-# print(result.fen)
-# result.visualize()
+# ===== Opening Detection Logic =====
+def lookup_opening_name(san_moves: list[str], opening_dict: dict) -> tuple[str, str]:
+    """
+    Looks up the opening name and ECO code based on the move sequence.
+    Tries the longest matching prefix in the opening dictionary.
+    """
+    for i in reversed(range(1, len(san_moves) + 1)):
+        key = " ".join(san_moves[:i])
+        if key in opening_dict:
+            entry = opening_dict[key]
+            return entry.get("name", "Unknown Opening"), entry.get("eco", "N/A")
+    return "Unknown Opening", "N/A"
+
+
+def detect_opening_name_from_fen(fen: str, max_depth: int = 10) -> dict:
+    """
+    Heuristically detects the name of the opening that leads to the given FEN.
+    Searches a Polyglot book by simulating all known opening move sequences up to `max_depth`.
+
+    Args:
+        fen (str): The FEN position to match.
+        max_depth (int): Max number of plies (half-moves) to search.
+
+    Returns:
+        dict: {
+            "opening_name": str,
+            "eco_code": str,
+            "san_moves": List[str],
+            "move_count": int
+        } or fallback error/info.
+    """
+    try:
+        target_board = chess.Board(fen)
+        target_board_fen = target_board.board_fen()
+
+        if not BOOK_PATH.is_file():
+            return {"error": f"Opening book not found at {BOOK_PATH}"}
+
+        from collections import deque
+
+        visited = set()
+        queue = deque()
+        queue.append((chess.Board(), []))  # (board, move history)
+
+        with chess.polyglot.open_reader(str(BOOK_PATH)) as reader:
+            while queue:
+                board, history = queue.popleft()
+
+                if board.board_fen() == target_board_fen:
+                    # Convert move history to SAN
+                    san_moves = []
+                    test_board = chess.Board()
+                    for move in history:
+                        san_moves.append(test_board.san(move))
+                        test_board.push(move)
+
+                    # Try full match first
+                    move_key = " ".join(san_moves)
+                    if move_key in eco_openings:
+                        entry = eco_openings[move_key]
+                        return {
+                            "opening_name": entry["name"],
+                            "eco_code": entry["eco"],
+                            "san_moves": san_moves,
+                            "move_count": len(san_moves)
+                        }
+
+                    # Fuzzy fallback: longest prefix match
+                    best_match = ""
+                    best_entry = None
+                    for key in eco_openings:
+                        if move_key.startswith(key) and len(key) > len(best_match):
+                            best_match = key
+                            best_entry = eco_openings[key]
+
+                    if best_entry:
+                        return {
+                            "opening_name": best_entry["name"],
+                            "eco_code": best_entry["eco"],
+                            "san_moves": san_moves,
+                            "move_count": len(san_moves)
+                        }
+
+                    # No match at all
+                    return {
+                        "opening_name": "Unknown Opening",
+                        "eco_code": "N/A",
+                        "san_moves": san_moves,
+                        "move_count": len(san_moves)
+                    }
+
+                if len(history) >= max_depth:
+                    continue
+
+                fen_key = (board.board_fen(), board.turn)
+                if fen_key in visited:
+                    continue
+                visited.add(fen_key)
+
+                try:
+                    for entry in reader.find_all(board):
+                        move = entry.move
+                        next_board = board.copy(stack=False)
+                        next_board.push(move)
+                        queue.append((next_board, history + [move]))
+                except IndexError:
+                    continue
+
+        return {
+            "opening_name": "Unknown Opening",
+            "eco_code": "N/A",
+            "san_moves": [],
+            "move_count": 0
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Example Usage
+# if __name__ == "__main__":
+#     test_fen = "rnbqkbnr/pp2pppp/2p5/3p4/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
+#     result = detect_opening_name_from_fen(test_fen)
+#     print("Detected Opening:", result["opening_name"])
