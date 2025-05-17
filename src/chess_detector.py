@@ -36,16 +36,11 @@ def map_point_homography(point, H):
 
 def rotate_grid(row, col, orientation):
     match orientation:
-        case "bottom":
-            return row, col
-        case "top":
-            return 7 - row, 7 - col
-        case "left":
-            return col, row
-        case "right":
-            return 7 - col, 7 - row
-        case _:
-            raise ValueError(f"Invalid grid orientation: {orientation}")
+        case "bottom": return row, col
+        case "top": return 7 - row, 7 - col
+        case "left": return col, row
+        case "right": return 7 - col, 7 - row
+        case _: raise ValueError(f"Invalid orientation: {orientation}")
 
 
 def grid_to_square(row, col, orientation):
@@ -79,18 +74,12 @@ def grid_to_square(row, col, orientation):
 
 # Rotate board to canonical white bottom orientation for FEN
 def to_fen_board_coords(board):
-    board = np.array(board)
-    return np.flipud(board).tolist()
+    return np.flipud(np.array(board)).tolist()
 
 
 def generate_full_fen(
     board,
-    orientation,
-    active_player="w",
-    en_passant="-",
-    halfmove=0,
-    fullmove=1,
-    interactive=False,
+    orientation
 ):
     # Build piece placement
     fen_rows = []
@@ -110,82 +99,47 @@ def generate_full_fen(
         fen_rows.append(fen_row)
     piece_placement = "/".join(fen_rows)
 
-    # Castling rights detection
-    castling = ""
+    # Castling rights detection (Temporarily Off)
+    # castling = ""
 
-    def piece_at(rank, file, expected):
-        file_idx = ord(file) - ord("a")
-        rank_idx = 8 - int(rank)
-        return board[rank_idx][file_idx] == expected
+    # def piece_at(rank, file, expected):
+    #     file_idx = ord(file) - ord("a")
+    #     rank_idx = 8 - int(rank)
+    #     return board[rank_idx][file_idx] == expected
 
-    if piece_at("1", "e", "K"):
-        if piece_at("1", "h", "R"):
-            castling += "K"
-        if piece_at("1", "a", "R"):
-            castling += "Q"
-    if piece_at("8", "e", "k"):
-        if piece_at("8", "h", "r"):
-            castling += "k"
-        if piece_at("8", "a", "r"):
-            castling += "q"
-    if castling == "":
-        castling = "-"
-
-    # Interactive prompt
-    if interactive:
-        user_input = input("Active player (w/b) [default w]: ").strip().lower()
-        if user_input in ["w", "b"]:
-            active_player = user_input
-
-        user_input = input("En passant target square [default -]: ").strip().lower()
-        if user_input:
-            en_passant = user_input
-
-        user_input = input("Halfmove clock [default 0]: ").strip()
-        if user_input.isdigit():
-            halfmove = user_input
-
-        user_input = input("Fullmove number [default 1]: ").strip()
-        if user_input.isdigit():
-            fullmove = user_input
-
-    fen = f"{piece_placement} {active_player} {castling} {en_passant} {halfmove} {fullmove}"
+    # if piece_at("1", "e", "K"):
+    #     if piece_at("1", "h", "R"):
+    #         castling += "K"
+    #     if piece_at("1", "a", "R"):
+    #         castling += "Q"
+    # if piece_at("8", "e", "k"):
+    #     if piece_at("8", "h", "r"):
+    #         castling += "k"
+    #     if piece_at("8", "a", "r"):
+    #         castling += "q"
+    # if castling == "":
+    #     castling = "-"
+    castling = "-"
+    fen = f"{piece_placement} w {castling} - 0 1"
     return fen
 
 
 # ===== FEN Generation =====
 def detections_to_fen(detections, orientation):
     board = [["" for _ in range(8)] for _ in range(8)]
-
     yolo_to_fen = {
-        "white-pawn": "P",
-        "white-rook": "R",
-        "white-knight": "N",
-        "white-bishop": "B",
-        "white-queen": "Q",
-        "white-king": "K",
-        "black-pawn": "p",
-        "black-rook": "r",
-        "black-knight": "n",
-        "black-bishop": "b",
-        "black-queen": "q",
-        "black-king": "k",
+        "white-pawn": "P", "white-rook": "R", "white-knight": "N",
+        "white-bishop": "B", "white-queen": "Q", "white-king": "K",
+        "black-pawn": "p", "black-rook": "r", "black-knight": "n",
+        "black-bishop": "b", "black-queen": "q", "black-king": "k"
     }
-
     for det in detections:
         row, col = det["row"], det["col"]
         label = det["label"]
         piece = yolo_to_fen.get(label.lower(), "")
         board[row][col] = piece
-
     canonical_board = to_fen_board_coords(board)
-
-    return canonical_board, "/".join(
-        [
-            "".join(str(len(list(g))) if k == "" else k for k, g in groupby(row))
-            for row in canonical_board
-        ]
-    )
+    return canonical_board, generate_full_fen(canonical_board, orientation)
 
 
 # ===== Visualisation (for Debugging) =====
@@ -275,7 +229,6 @@ class ChessDetectionResult:
         self.detections = detections
         self.homography = homography
         self.orientation = orientation
-
         canonical_board, self.fen = detections_to_fen(detections, orientation)
         self.fen = generate_full_fen(canonical_board, orientation)
 
@@ -301,21 +254,25 @@ def detect_chess_board(model: YOLO, img: Image.Image, orientation):
             cy = y2 - 0.25 * (y2 - y1)
 
             grid_x, grid_y = map_point_homography((cx.item(), cy.item()), H)
+
+            # Skip detections outside the playable 8x8 grid
+            if not (0 <= grid_x < 8 and 0 <= grid_y < 8):
+                print(f"[SKIPPED] Detection at ({cx.item():.1f}, {cy.item():.1f}) mapped to ({grid_x:.2f}, {grid_y:.2f}) → outside board")
+                continue
+
             col = min(max(int(grid_x), 0), 7)
             row = min(max(int(grid_y), 0), 7)
 
             row, col = rotate_grid(row, col, orientation)
 
-            detections.append(
-                {
-                    "row": row,
-                    "col": col,
-                    "grid": (row, col),
-                    "center": (cx.item(), cy.item()),
-                    "label": result.names[int(cls)],
-                    "confidence": conf.item(),
-                }
-            )
+            detections.append({
+                "row": row,
+                "col": col,
+                "grid": (row, col),
+                "center": (cx.item(), cy.item()),
+                "label": result.names[int(cls)],
+                "confidence": conf.item(),
+            })
 
     return ChessDetectionResult(processed_img, detections, H, orientation)
 
