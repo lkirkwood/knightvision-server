@@ -42,7 +42,24 @@ class BoardOrientation:
             case "right": return np.rot90(arr, k=3).tolist()    # Rotate 90°   (Clockwise)
 
 
-def generate_full_fen(board, orientation):
+
+def detections_to_board(detections, orientation):
+    board = [["" for _ in range(8)] for _ in range(8)]
+    yolo_to_fen_mapping = {
+        "white-pawn": "P", "white-rook": "R", "white-knight": "N",
+        "white-bishop": "B", "white-queen": "Q", "white-king": "K",
+        "black-pawn": "p", "black-rook": "r", "black-knight": "n",
+        "black-bishop": "b", "black-queen": "q", "black-king": "k"
+    }
+    for detected_piece in detections:
+        row, col = detected_piece["row"], detected_piece["col"]
+        piece_label = detected_piece["label"]
+        piece_name = yolo_to_fen_mapping.get(piece_label.lower(), "")
+        board[row][col] = piece_name
+    return board
+
+
+def board_to_fen(board: list[list[str]]) -> str:
     fen_rows = []
     for row in board:
         fen_row = ""
@@ -64,159 +81,82 @@ def generate_full_fen(board, orientation):
     return fen
 
 
-# ===== FEN Generation =====
-def detections_to_fen(detections, orientation):
-    board = [["" for _ in range(8)] for _ in range(8)]
-    yolo_to_fen = {
-        "white-pawn": "P", "white-rook": "R", "white-knight": "N",
-        "white-bishop": "B", "white-queen": "Q", "white-king": "K",
-        "black-pawn": "p", "black-rook": "r", "black-knight": "n",
-        "black-bishop": "b", "black-queen": "q", "black-king": "k"
-    }
-    for detected_piece in detections:
-        row, col = detected_piece["row"], detected_piece["col"]
-        piece_label = detected_piece["label"]
-        piece_name = yolo_to_fen.get(piece_label.lower(), "")
-        board[row][col] = piece_name
-    canonical_board = rotate_board_to_fen_view(board)
-    return canonical_board, generate_full_fen(canonical_board, orientation)
+def map_point_to_board_space(point: tuple[float, float], homography_matrix: np.ndarray) -> tuple[float, float]:
+    """Projects a point (x, y) from the original image space into the 512x512 perspective-corrected board space."""
+    # Convert 2D pixel-point to Homogeneous Coordinates for matrix projection ((x,y) → (x, y, 1))
+    homogenous_point  = np.array([point[0], point[1]], 1).reshape(3, 1)
+    
+    # Apply homography matrix to warp the point into corrected space
+    warped_point = np.dot(homography_matrix, homogenous_point)
 
+    # Normalise by third (scale) coordinate to convert back to 2D Cartesian Coordinates
+    warped_point /= warped_point[2]
 
-# ===== Visualisation (for Debugging) =====
-def visualize_grid(img, detections, H, orientation):
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.imshow(img)
-    grid_points = []
-    for i in range(9):
-        row = []
-        for j in range(9):
-            pt = np.array([j, i, 1]).reshape(3, 1)
-            mapped_pt = np.dot(np.linalg.inv(H), pt)
-            mapped_pt /= mapped_pt[2]
-            row.append((mapped_pt[0][0], mapped_pt[1][0]))
-        grid_points.append(row)
+    # Extract the individual corrected coordinates
+    corrected_x = warped_point[0][0]
+    corrected_y = warped_point[1][0]
 
-    for i in range(9):
-        ax.plot(
-            [p[0] for p in grid_points[i]],
-            [p[1] for p in grid_points[i]],
-            color="white",
-            linewidth=2,
-        )
-    for j in range(9):
-        ax.plot(
-            [grid_points[i][j][0] for i in range(9)],
-            [grid_points[i][j][1] for i in range(9)],
-            color="white",
-            linewidth=2,
-        )
-
-    for j in range(8):
-        mid_x = (grid_points[8][j][0] + grid_points[7][j][0]) / 2
-        mid_y = (grid_points[8][j][1] + grid_points[7][j][1]) / 2
-        square = grid_to_square(0, j, orientation)
-        ax.text(
-            mid_x + 20,
-            mid_y + 30,
-            square[0],
-            ha="center",
-            va="top",
-            color="black",
-            fontsize=12,
-            fontweight="bold",
-        )
-
-    for i in range(8):
-        mid_x = (grid_points[i][0][0] + grid_points[i][1][0]) / 2
-        mid_y = (grid_points[i][0][1] + grid_points[i][1][1]) / 2
-        square = grid_to_square(i, 0, orientation)
-        ax.text(
-            mid_x - 25,
-            mid_y + 20,
-            square[1],
-            ha="right",
-            va="center",
-            color="black",
-            fontsize=12,
-            fontweight="bold",
-        )
-
-    for det in detections:
-        cx, cy = det["center"]
-        row, col = det["grid"]
-        board_coord = grid_to_square(col, row, orientation)
-        ax.plot(cx, cy, "o", color="red", markersize=10)
-        ax.text(
-            cx + 5,
-            cy,
-            board_coord,
-            color="yellow",
-            fontsize=10,
-            fontweight="bold",
-            bbox=dict(facecolor="black", alpha=0.6),
-        )
-
-    plt.title("Knight Vision - Detected Pieces on Board Grid")
-    plt.axis("off")
-    plt.show()
+    return corrected_x, corrected_y
 
 
 # ===== Main API-Friendly Wrapper =====
 class ChessDetectionResult:
-    def __init__(self, image, detections, homography, orientation):
+    def __init__(self, image, detections, homography_matrix):
         self.image = image
         self.detections = detections
-        self.homography = homography
-        self.orientation = orientation
-        canonical_board, self.fen = detections_to_fen(detections, orientation)
-        self.fen = generate_full_fen(canonical_board, orientation)
-
-    def visualize(self):
-        visualize_grid(self.image, self.detections, self.homography, self.orientation)
+        self.homography_matrix = homography_matrix
+        board = detections_to_board(detections)
+        self.fen = board_to_fen(board)
+        self.board = board
 
 
-def detect_chess_board(model: YOLO, img: Image.Image, orientation):
-    processed_img = img.convert("RGB").resize(TARGET_SIZE, Image.Resampling.LANCZOS)
-    # H = homography matrix from Board Isolation
-    results = model.predict(img, imgsz=640)
+def detect_chess_board(
+        model: YOLO,
+        original_image: Image.Image,
+        corrected_image: Image.Image = None,
+        homography_matrix: np.ndarray = None,
+        orientation: str = "left"
+):
+    # YOLO predicts on the original image (with distortion). It resizes internally to 416×416, 
+    # but returns box coordinates in original pixel space, matching the homography's source domain.
 
+    predictions = model.predict(original_image.convert("RGB"), imgsz=416)
+
+    board_orientation = BoardOrientation(orientation)
     detections = []
-    for result in results:
-        if result.boxes is None:
-            raise RuntimeError("Model found no boxes in the image!")
+    
+    for prediction in predictions:
+        if prediction.boxes is None:
+            raise RuntimeError("Model Found No Boxes in the Image!")
 
-        for box, conf, cls in zip(
-            result.boxes.xyxy, result.boxes.conf, result.boxes.cls
-        ):
-            x1, y1, x2, y2 = box
-            cx = (x1 + x2) / 2
-            cy = y2 - 0.25 * (y2 - y1)
+        for bounding_box, confidence, class_id in zip(prediction.boxes.xyxy, prediction.boxes.conf, prediction.boxes.cls):
+            min_x, min_y, max_x, max_y = bounding_box
+            center_x = (min_x + max_x) / 2
+            center_y = max_y - 0.25 * (max_y - min_y) # Lower center point (more reliable)
 
-            grid_x, grid_y = map_point_homography((cx.item(), cy.item()), H)
+            # Project the center of the bounding box into the perspective-corrected board space
+            corrected_x, corrected_y = map_point_to_board_space((center_x.item(), center_y.item()), homography_matrix)
 
-            # Skip detections outside the playable 8x8 grid
-            if not (0 <= grid_x < 8 and 0 <= grid_y < 8):
-                print(f"[SKIPPED] Detection at ({cx.item():.1f}, {cy.item():.1f}) mapped to ({grid_x:.2f}, {grid_y:.2f}) → outside board")
+            # Skip points that fall outside the playable 8×8 board region
+            if not (0 <= corrected_x < 512 and 0 <= corrected_y < 512):
+                print(
+                    f"[SKIPPED] Detection at ({center_x:.1f}, {center_y:.1f}) "
+                    f"→ ({corrected_x:.1f}, {corrected_y:.1f}) is outside board bounds"
+                )
                 continue
-
-            col = min(max(int(grid_x), 0), 7)
-            row = min(max(int(grid_y), 0), 7)
-
-            row, col = transform_position(row, col, orientation)
+            
+            # Map to 8×8 grid coordinates (each square = 64×64 pixels)
+            grid_col = int(corrected_x // 64)
+            grid_row = int(corrected_y // 64)
+            row, col = board_orientation.remap_square_index(grid_row, grid_col)
 
             detections.append({
                 "row": row,
                 "col": col,
                 "grid": (row, col),
-                "center": (cx.item(), cy.item()),
-                "label": result.names[int(cls)],
-                "confidence": conf.item(),
+                "center": (center_x.item(), center_y.item()),
+                "label": prediction.names[int(class_id)],
+                "confidence": confidence.item(),
             })
 
-    return ChessDetectionResult(processed_img, detections, H, orientation)
-
-
-# Example Usage:
-# result = detect_chess_board("board.jpg", "left")
-# print(result.fen)
-# result.visualize()
+    return ChessDetectionResult(original_image, detections, homography_matrix)
