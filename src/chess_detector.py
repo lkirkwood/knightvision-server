@@ -8,119 +8,59 @@ import cv2
 from itertools import groupby
 
 # Constants
-TARGET_SIZE = (416, 416)
-TRAPEZIUM_CORNERS = np.array(
-    [
-        [74, 20],  # Top Left
-        [316, 27],  # Top Right
-        [371, 341],  # Bottom Right
-        [37, 346],  # Bottom Left
-    ],
-    dtype=np.float32,
-)
+TARGET_SIZE = (512, 512)
 
+# ===== Custom Board Orientation Handler =====
+class BoardOrientation:
+    def __init__(self, orientation: str):
+        valid_orientations = {"top", "bottom", "left", "right"}
+        if orientation not in valid_orientations:
+            raise ValueError(f"Invalid Orientation: {orientation}")
+        
+    def remap_square_index(self, row, col):
+        """Adjusts (row, col) based on board orientation."""
+        match self.orientation:
+            case "bottom": return row, col
+            case "top": return 7 - row, 7 - col
+            case "left": return col, row
+            case "right": return 7 - col, 7 - row
 
-# ===== Homography and Coordinate Mapping =====
-def compute_homography(source_points):
-    target_points = np.array([[0, 0], [8, 0], [8, 8], [0, 8]], dtype=np.float32)
-    H, _ = cv2.findHomography(source_points, target_points)
-    return H
-
-
-def map_point_homography(point, H):
-    pt = np.array([point[0], point[1], 1]).reshape(3, 1)
-    mapped_pt = np.dot(H, pt)
-    mapped_pt /= mapped_pt[2]
-    return mapped_pt[0][0], mapped_pt[1][0]
-
-
-def rotate_grid(row, col, orientation):
-    match orientation:
-        case "bottom": return row, col
-        case "top": return 7 - row, 7 - col
-        case "left": return col, row
-        case "right": return 7 - col, 7 - row
-        case _: raise ValueError(f"Invalid orientation: {orientation}")
-
-
-def grid_to_square(row, col, orientation):
-    """
-    Converts grid coordinates (row, col) to chess square notation based on board orientation.
-    """
-
-    if orientation == "bottom":
+    def get_square_id(self, row, col):
+        """Returns algebraic notation (e.g., 'e4') for a square at (row, col) based on orientation."""
+        row, col = self.remap_square_index(row, col)
         files = ["a", "b", "c", "d", "e", "f", "g", "h"]
         ranks = ["1", "2", "3", "4", "5", "6", "7", "8"]
-        return f"{files[col]}{ranks[row]}"
-
-    elif orientation == "top":
-        files = ["h", "g", "f", "e", "d", "c", "b", "a"]
-        ranks = ["8", "7", "6", "5", "4", "3", "2", "1"]
-        return f"{files[col]}{ranks[row]}"
-
-    elif orientation == "left":
-        ranks = ["1", "2", "3", "4", "5", "6", "7", "8"]
-        files = ["a", "b", "c", "d", "e", "f", "g", "h"]
         return f"{ranks[col]}{files[row]}"
-
-    elif orientation == "right":
-        ranks = ["8", "7", "6", "5", "4", "3", "2", "1"]
-        files = ["h", "g", "f", "e", "d", "c", "b", "a"]
-        return f"{ranks[col]}{files[row]}"
-
-    else:
-        raise ValueError(f"Invalid orientation: {orientation}")
-
-
-# Rotate board to canonical white bottom orientation for FEN
-def to_fen_board_coords(board):
-    return np.flipud(np.array(board)).tolist()
+        
+    def rotate_board_to_fen_view(self, board):
+        """Rotates or flips the entire board to match FEN 'white-on-bottom' orientation."""
+        arr = np.array(board)
+        match self.orientation:
+            case "bottom": return arr.tolist()                  # Don't Move   (Already Correct)
+            case "top": return np.flipud(arr).tolist()          # Rotate 180°  (Flip Vertically)
+            case "left": return np.rot90(arr, k=1).tolist()     # Rotate 90°   (Counter-Clockwise)
+            case "right": return np.rot90(arr, k=3).tolist()    # Rotate 90°   (Clockwise)
 
 
-def generate_full_fen(
-    board,
-    orientation
-):
-    # Build piece placement
+def generate_full_fen(board, orientation):
     fen_rows = []
     for row in board:
         fen_row = ""
-        empty_count = 0
+        empty_cells_in_row = 0
         for cell in row:
             if cell == "":
-                empty_count += 1
+                empty_cells_in_row += 1
             else:
-                if empty_count > 0:
-                    fen_row += str(empty_count)
-                    empty_count = 0
+                if empty_cells_in_row > 0:
+                    fen_row += str(empty_cells_in_row)
+                    empty_cells_in_row = 0
                 fen_row += cell
-        if empty_count > 0:
-            fen_row += str(empty_count)
+        if empty_cells_in_row > 0:
+            fen_row += str(empty_cells_in_row)
         fen_rows.append(fen_row)
     piece_placement = "/".join(fen_rows)
-
-    # Castling rights detection (Temporarily Off)
-    # castling = ""
-
-    # def piece_at(rank, file, expected):
-    #     file_idx = ord(file) - ord("a")
-    #     rank_idx = 8 - int(rank)
-    #     return board[rank_idx][file_idx] == expected
-
-    # if piece_at("1", "e", "K"):
-    #     if piece_at("1", "h", "R"):
-    #         castling += "K"
-    #     if piece_at("1", "a", "R"):
-    #         castling += "Q"
-    # if piece_at("8", "e", "k"):
-    #     if piece_at("8", "h", "r"):
-    #         castling += "k"
-    #     if piece_at("8", "a", "r"):
-    #         castling += "q"
-    # if castling == "":
-    #     castling = "-"
-    castling = "-"
-    fen = f"{piece_placement} w {castling} - 0 1"
+    castling_options = "-"
+    fen = f"{piece_placement} w {castling_options} - 0 1"
     return fen
 
 
@@ -133,12 +73,12 @@ def detections_to_fen(detections, orientation):
         "black-pawn": "p", "black-rook": "r", "black-knight": "n",
         "black-bishop": "b", "black-queen": "q", "black-king": "k"
     }
-    for det in detections:
-        row, col = det["row"], det["col"]
-        label = det["label"]
-        piece = yolo_to_fen.get(label.lower(), "")
-        board[row][col] = piece
-    canonical_board = to_fen_board_coords(board)
+    for detected_piece in detections:
+        row, col = detected_piece["row"], detected_piece["col"]
+        piece_label = detected_piece["label"]
+        piece_name = yolo_to_fen.get(piece_label.lower(), "")
+        board[row][col] = piece_name
+    canonical_board = rotate_board_to_fen_view(board)
     return canonical_board, generate_full_fen(canonical_board, orientation)
 
 
@@ -146,7 +86,6 @@ def detections_to_fen(detections, orientation):
 def visualize_grid(img, detections, H, orientation):
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.imshow(img)
-
     grid_points = []
     for i in range(9):
         row = []
@@ -238,7 +177,7 @@ class ChessDetectionResult:
 
 def detect_chess_board(model: YOLO, img: Image.Image, orientation):
     processed_img = img.convert("RGB").resize(TARGET_SIZE, Image.Resampling.LANCZOS)
-    H = compute_homography(TRAPEZIUM_CORNERS)
+    # H = homography matrix from Board Isolation
     results = model.predict(img, imgsz=640)
 
     detections = []
@@ -263,7 +202,7 @@ def detect_chess_board(model: YOLO, img: Image.Image, orientation):
             col = min(max(int(grid_x), 0), 7)
             row = min(max(int(grid_y), 0), 7)
 
-            row, col = rotate_grid(row, col, orientation)
+            row, col = transform_position(row, col, orientation)
 
             detections.append({
                 "row": row,
