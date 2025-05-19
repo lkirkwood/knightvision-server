@@ -1,39 +1,41 @@
 # ===== Knight Vision - Manual Testing Pipeline =====
-
-
-from chess_detector import detect_chess_board, ChessDetectionResult
-from ultralytics import YOLO
-from PIL import Image
+import sys, os
 import numpy as np
+from PIL import Image
+from ultralytics import YOLO
 
-# (Optional Debugging Utilities)
+# Extend path to access local modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
+# Core detection logic
+from chess_detector import detect_chess_board
+
+# Visual debugging tools
 from visualisation_utils import (
-    show_image_comparison,
-    draw_detections_on_image,
-    visualise_on_digital_board
+    compare_images,
+    map_bounding_boxes,
+    map_corner_projection,
+    display_FEN
 )
 
-
-# ===== Setup =====
+# ===== Configuration =====
 model_path = "./model/best.pt"
-original_image_path = "./examples/test_board_original.png"
-corrected_image_path = "./examples/test_board_corrected.jpg"
-homography_matrix_path = "./examples/homography_matrix.npy"
-orientation = "left"   # or "bottom", "top", "right"
+original_image_path = "./examples/complex_test_original.jpg"
+corrected_image_path = "./examples/complex_test_corrected.jpg"
+cumulative_homography_matrix_path = "./examples/complex_test_cumulative_homography_matrix.npy"
+orientation = "left"  # Options: "top", "bottom", "left", "right"
 
-# ===== Load Inputs =====
+# ===== Load Model & Inputs =====
 model = YOLO(model_path)
 original_image = Image.open(original_image_path)
 corrected_image = Image.open(corrected_image_path)
-homography_matrix = np.load(homography_matrix_path)
+homography_matrix = np.load(cumulative_homography_matrix_path)
 
-# ===== Check Model is Valid (Optional) =====
+# ===== Run Detection =====
 print(f"Model Classes: {model.names}")
-
-# ===== Run Detection + FEN Generation =====
 print(">>> Running Detection and Generating FEN...")
 
-chess_detection_result = detect_chess_board(
+result = detect_chess_board(
     model=model,
     original_image=original_image,
     corrected_image=corrected_image,
@@ -41,13 +43,14 @@ chess_detection_result = detect_chess_board(
     orientation=orientation
 )
 
-# ===== Display Generated FEN =====
-print("\n=== GENERATED FEN ===")
-print(chess_detection_result.fen)
+# ===== Display Output =====
+print(f"\n=== GENERATED FEN ===\n{result.get_fen()}")
+print(f" \nCumulative Homography Matrix {homography_matrix}")
 
-# ===== Visualisation(s) =====
+# ===== Visualisation =====
 print("\n>>> Visualising Detection + Board Mapping")
-show_image_comparison(original_image, corrected_image)
-draw_detections_on_image(original_image, chess_detection_result.detections, title="Detections on Original Image")
-draw_detections_on_image(corrected_image, chess_detection_result.detections, title="Detections on Corrected Image")
-visualise_on_digital_board(chess_detection_result.detections)
+compare_images(original_image, corrected_image)
+map_bounding_boxes(original_image, result.raw_detections, "Original Image")
+map_bounding_boxes(corrected_image, result.corrected_detections,  "Corrected Image")
+map_corner_projection()
+display_FEN()

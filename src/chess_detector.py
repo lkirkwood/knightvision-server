@@ -16,21 +16,37 @@ class BoardOrientation:
         valid_orientations = {"top", "bottom", "left", "right"}
         if orientation not in valid_orientations:
             raise ValueError(f"Invalid Orientation: {orientation}")
+        self.orientation=orientation
         
-    def remap_square_index(self, row, col):
-        """Adjusts (row, col) based on board orientation."""
-        match self.orientation:
-            case "bottom": return row, col
-            case "top": return 7 - row, 7 - col
-            case "left": return col, row
-            case "right": return 7 - col, 7 - row
+    # def remap_square_index(self, row, col):
+    #     """Adjusts (row, col) based on board orientation."""
+    #     match self.orientation:
+    #         case "bottom": return row, col
+    #         case "top": return row, col
+    #         case "left": return row, col
+    #         case "right": return row, col
 
     def get_square_id(self, row, col):
-        """Returns algebraic notation (e.g., 'e4') for a square at (row, col) based on orientation."""
-        row, col = self.remap_square_index(row, col)
-        files = ["a", "b", "c", "d", "e", "f", "g", "h"]
-        ranks = ["1", "2", "3", "4", "5", "6", "7", "8"]
-        return f"{ranks[col]}{files[row]}"
+        """
+        Returns algebraic notation (e.g., 'e4') for a square at (row, col),
+        adjusted for the current board orientation.
+        """
+        if self.orientation == "bottom":
+            file = "abcdefgh"[col]
+            rank = "12345678"[7 - row]
+        elif self.orientation == "top":
+            file = "hgfedcba"[col]
+            rank = "87654321"[7 - row]
+        elif self.orientation == "left":
+            file = "12345678"[row]
+            rank = "abcdefgh"[col]
+        elif self.orientation == "right":
+            file = "87654321"[row]
+            rank = "hgfedcba"[col]
+        else:
+            raise ValueError(f"Invalid orientation: {self.orientation}")
+
+        return f"{file}{rank}"
         
     def rotate_board_to_fen_view(self, board):
         """Rotates or flips the entire board to match FEN 'white-on-bottom' orientation."""
@@ -43,7 +59,7 @@ class BoardOrientation:
 
 
 
-def detections_to_board(detections, orientation):
+def detections_to_board(detections):
     board = [["" for _ in range(8)] for _ in range(8)]
     yolo_to_fen_mapping = {
         "white-pawn": "P", "white-rook": "R", "white-knight": "N",
@@ -84,8 +100,10 @@ def board_to_fen(board: list[list[str]]) -> str:
 def map_point_to_board_space(point: tuple[float, float], homography_matrix: np.ndarray) -> tuple[float, float]:
     """Projects a point (x, y) from the original image space into the 512x512 perspective-corrected board space."""
     # Convert 2D pixel-point to Homogeneous Coordinates for matrix projection ((x,y) → (x, y, 1))
-    homogenous_point  = np.array([point[0], point[1]], 1).reshape(3, 1)
+    homogenous_point  = np.array([point[0], point[1], 1]).reshape(3, 1)
     
+    #inverse_homography_matrix = np.linalg.inv(homography_matrix)
+
     # Apply homography matrix to warp the point into corrected space
     warped_point = np.dot(homography_matrix, homogenous_point)
 
@@ -98,16 +116,70 @@ def map_point_to_board_space(point: tuple[float, float], homography_matrix: np.n
 
     return corrected_x, corrected_y
 
+def debug_log_bounding_box_mappings(
+    detections: list,
+    homography_matrix: np.ndarray
+):
+    """
+    Logs the full bounding box mapping pipeline for every detection,
+    from raw bbox to final grid assignment (row, col).
+    Assumes orientation adjustment is handled later (e.g., before FEN generation).
+    """
+    print("=== Bounding Box Mapping Debug ===")
+    for i, det in enumerate(detections):
+        label = det["label"]
+        conf = det["confidence"]
+        x1, y1, x2, y2 = det["box"]
+
+        # Step 1: Center points
+        center_x = (x1 + x2) / 2
+        center_y = y2 - 0.25 * (y2 - y1)
+        print(f"\n[{i+1}] {label} ({conf:.2f})")
+        print(f"Raw box:      ({x1:.2f}, {y1:.2f}) → ({x2:.2f}, {y2:.2f})")
+        print(f"Raw center:   ({(x1 + x2)/2:.2f}, {(y1 + y2)/2:.2f})")
+        print(f"Offset center (lower): ({center_x:.2f}, {center_y:.2f})")
+
+        # Step 2: Project via homography
+        corrected_x, corrected_y = map_point_to_board_space((center_x, center_y), homography_matrix)
+        print(f"Projected:    ({corrected_x:.2f}, {corrected_y:.2f})")
+
+        # Step 3: Map to 8x8 grid
+        grid_col = min(max(int(corrected_x // 64), 0), 7)
+        grid_row = min(max(int(corrected_y // 64), 0), 7)
+        print(f"Mapped to grid square: row={grid_row}, col={grid_col}")
+
+
+
 
 # ===== Main API-Friendly Wrapper =====
 class ChessDetectionResult:
-    def __init__(self, image, detections, homography_matrix):
+    def __init__(self, image, raw_detections, corrected_detections, homography_matrix, orientation):
         self.image = image
-        self.detections = detections
+        self.raw_detections = raw_detections  # Detections before homography
+        self.corrected_detections = corrected_detections  # For projection-based logic
         self.homography_matrix = homography_matrix
-        board = detections_to_board(detections)
-        self.fen = board_to_fen(board)
-        self.board = board
+        self.orientation = orientation
+
+        # Convert corrected detections to board grid
+        self.raw_board = detections_to_board(corrected_detections)
+
+        print("[DEBUG] Board Before Rotation:")
+        for row in self.raw_board:
+            print(" ".join(cell if cell else "." for cell in row))
+
+        # Apply rotation (if any) to align with white-on-bottom FEN format
+        self.rotated_board = BoardOrientation(orientation).rotate_board_to_fen_view(self.raw_board)
+        self.fen = board_to_fen(self.rotated_board)
+
+    def get_board(self, rotated=True):
+        """Returns the board grid — rotated for FEN view, or raw layout"""
+        return self.rotated_board if rotated else self.raw_board
+
+    def get_fen(self):
+        """Returns FEN string"""
+        return self.fen
+
+        
 
 
 def detect_chess_board(
@@ -115,48 +187,85 @@ def detect_chess_board(
         original_image: Image.Image,
         corrected_image: Image.Image = None,
         homography_matrix: np.ndarray = None,
-        orientation: str = "left"
+        orientation: str = "left",
+        confidence_threshold: float = 0.5
 ):
-    # YOLO predicts on the original image (with distortion). It resizes internally to 416×416, 
-    # but returns box coordinates in original pixel space, matching the homography's source domain.
+    #print(f"[DEBUG] Image Sizes - Original: {original_image.size}, Corrected: {corrected_image.size if corrected_image else 'N/A'}")
 
-    predictions = model.predict(original_image.convert("RGB"), imgsz=416)
+    # === Ensure image used for YOLO is same as one used to generate homography ===
+    if original_image.size != (512, 512):
+        print("[WARN] Resizing original image to 512x512 for consistency")
+        original_image = original_image.resize((512, 512), Image.Resampling.LANCZOS)
+
+    predictions = model.predict(original_image.convert("RGB"), imgsz=512)
+
+    corrected_detections = []  # renamed for clarity
+    raw_detections = []        # optional: store untransformed bounding boxes (in original image space)
 
     board_orientation = BoardOrientation(orientation)
-    detections = []
-    
+
     for prediction in predictions:
         if prediction.boxes is None:
             raise RuntimeError("Model Found No Boxes in the Image!")
+        
 
-        for bounding_box, confidence, class_id in zip(prediction.boxes.xyxy, prediction.boxes.conf, prediction.boxes.cls):
-            min_x, min_y, max_x, max_y = bounding_box
-            center_x = (min_x + max_x) / 2
-            center_y = max_y - 0.25 * (max_y - min_y) # Lower center point (more reliable)
 
-            # Project the center of the bounding box into the perspective-corrected board space
-            corrected_x, corrected_y = map_point_to_board_space((center_x.item(), center_y.item()), homography_matrix)
-
-            # Skip points that fall outside the playable 8×8 board region
-            if not (0 <= corrected_x < 512 and 0 <= corrected_y < 512):
-                print(
-                    f"[SKIPPED] Detection at ({center_x:.1f}, {center_y:.1f}) "
-                    f"→ ({corrected_x:.1f}, {corrected_y:.1f}) is outside board bounds"
-                )
+        for bbox, confidence, class_id in zip(
+            prediction.boxes.xyxy, prediction.boxes.conf, prediction.boxes.cls
+        ):
+            if float(confidence) < confidence_threshold:
+                print(f"[SKIPPED] {model.names[int(class_id)]} ({confidence:.2f}) below threshold {confidence_threshold}")
                 continue
             
-            # Map to 8×8 grid coordinates (each square = 64×64 pixels)
-            grid_col = int(corrected_x // 64)
-            grid_row = int(corrected_y // 64)
-            row, col = board_orientation.remap_square_index(grid_row, grid_col)
+            label = model.names[int(class_id)]
 
-            detections.append({
-                "row": row,
-                "col": col,
-                "grid": (row, col),
-                "center": (center_x.item(), center_y.item()),
-                "label": prediction.names[int(class_id)],
-                "confidence": confidence.item(),
+            min_x, min_y, max_x, max_y = map(float, bbox)
+            center_x = (min_x + max_x) / 2
+            center_y = max_y - 0.25 * (max_y - min_y)
+
+            # Map center + box via homography
+            corrected_cx, corrected_cy = map_point_to_board_space((center_x, center_y), homography_matrix)
+            if not (0 <= corrected_cx < 512 and 0 <= corrected_cy < 512):
+                continue
+            
+            #grid_col = min(max(int(corrected_cx // 64), 0), 7)
+            #grid_row = min(max(int(corrected_cy // 64), 0), 7)
+            grid_col = int(corrected_cx // 64)
+            grid_row = int(corrected_cy // 64)
+
+            # Transform full box corners
+            corners = [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)]
+            warped = [map_point_to_board_space(pt, homography_matrix) for pt in corners]
+            xs, ys = zip(*warped)
+            corrected_box = [min(xs), min(ys), max(xs), max(ys)]
+
+
+            raw_detections.append({
+                "row": None,   # Unknown in distorted space
+                "col": None,   # Unknown in distorted space
+                "grid": None,  # Unknown in distorted space
+                "center": (center_x, center_y),
+                "label": label,
+                "confidence": float(confidence),
+                "box": [min_x, min_y, max_x, max_y],
             })
 
-    return ChessDetectionResult(original_image, detections, homography_matrix)
+            corrected_detections.append({
+                "row": grid_row,
+                "col": grid_col,
+                "grid": (grid_row, grid_col),
+                "center": (corrected_cx, corrected_cy),
+                "label": label,
+                "confidence": float(confidence),
+                "box": corrected_box,
+            })
+
+    debug_log_bounding_box_mappings(corrected_detections, homography_matrix)
+
+    return ChessDetectionResult(
+        image=original_image,
+        raw_detections=raw_detections,
+        corrected_detections=corrected_detections,
+        homography_matrix=homography_matrix,
+        orientation=orientation
+    )
