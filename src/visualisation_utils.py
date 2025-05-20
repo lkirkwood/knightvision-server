@@ -23,10 +23,11 @@ def map_bounding_boxes(image, detections, title, box_color="cyan"):
     image = image.copy()
     draw = ImageDraw.Draw(image)
     
-    def get_square_name(row, col):
-        files = "abcdefgh"
-        ranks = "12345678"
-        return f"{files[col]}{ranks[7 - row]}"  # standard white-bottom FEN
+    # def get_square_name(row, col):
+    #     """Maps (row, col) directly to algebraic notation assuming white is at bottom."""
+    #     files = "abcdefgh"
+    #     ranks = "87654321"  # top row is rank 8, bottom is rank 1
+    #     return f"{files[col]}{ranks[row]}"  # no rotation applied, already canonical
 
     for det in detections:
         # Draw bounding box
@@ -35,14 +36,9 @@ def map_bounding_boxes(image, detections, title, box_color="cyan"):
             draw.rectangle([x1, y1, x2, y2], outline=box_color, width=2)
         
         # Draw center point and grid label if both are available
-        if "center" in det and "grid" in det and det["grid"] is not None:
+        if "center" in det and "grid" in det:
             cx, cy = det["center"]
-            row_col = det["grid"]
-            if isinstance(row_col, tuple) and len(row_col) == 2:
-                row, col = row_col
-                draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), outline="red", width=2)
-                square_name = get_square_name(row, col)
-                draw.text((cx + 4, cy - 12), square_name, fill="yellow")
+            draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), outline="red", width=2)
 
     plt.figure(figsize=(6, 6))
     plt.imshow(image)

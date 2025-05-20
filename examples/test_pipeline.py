@@ -19,11 +19,13 @@ from visualisation_utils import (
 )
 
 # ===== Configuration =====
+IMAGE_ID = "full_board_bottom"
+IMAGE_SUBSET = "test"
 model_path = "./model/best.pt"
-original_image_path = "./examples/complex_test_original.jpg"
-corrected_image_path = "./examples/complex_test_corrected.jpg"
-cumulative_homography_matrix_path = "./examples/complex_test_cumulative_homography_matrix.npy"
-orientation = "left"  # Options: "top", "bottom", "left", "right"
+original_image_path = f"./TESTING/our_chess_images/raw/{IMAGE_ID}.jpg"
+corrected_image_path = f"./TESTING/our_chess_images/corrected/{IMAGE_ID}.jpg"
+cumulative_homography_matrix_path = f"./TESTING/our_chess_images/corrected/{IMAGE_ID}.npy"
+orientation = "bottom"  # Options: "top", "bottom", "left", "right"
 
 # ===== Load Model & Inputs =====
 model = YOLO(model_path)
@@ -52,5 +54,5 @@ print("\n>>> Visualising Detection + Board Mapping")
 compare_images(original_image, corrected_image)
 map_bounding_boxes(original_image, result.raw_detections, "Original Image")
 map_bounding_boxes(corrected_image, result.corrected_detections,  "Corrected Image")
-map_corner_projection()
-display_FEN()
+map_corner_projection(original_image, corrected_image, homography_matrix)
+display_FEN(result.fen)

@@ -21,3 +21,7 @@ venv/
 # ===== Model File(s) =====
 *.pt
 *.pth
+
+# TEMP
+*dataset
+*testing

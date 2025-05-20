@@ -193,9 +193,9 @@ def detect_chess_board(
     #print(f"[DEBUG] Image Sizes - Original: {original_image.size}, Corrected: {corrected_image.size if corrected_image else 'N/A'}")
 
     # === Ensure image used for YOLO is same as one used to generate homography ===
-    if original_image.size != (512, 512):
-        print("[WARN] Resizing original image to 512x512 for consistency")
-        original_image = original_image.resize((512, 512), Image.Resampling.LANCZOS)
+    #if original_image.size != (512, 512):
+       # print("[WARN] Resizing original image to 512x512 for consistency")
+        #original_image = original_image.resize((512, 512), Image.Resampling.LANCZOS)
 
     predictions = model.predict(original_image.convert("RGB"), imgsz=512)
 
@@ -225,8 +225,9 @@ def detect_chess_board(
 
             # Map center + box via homography
             corrected_cx, corrected_cy = map_point_to_board_space((center_x, center_y), homography_matrix)
-            if not (0 <= corrected_cx < 512 and 0 <= corrected_cy < 512):
-                continue
+            # if not (0 <= corrected_cx < 512 and 0 <= corrected_cy < 512):
+            #     print(f"[SKIPPED] {model.names[int(class_id)]} (Out of Bounds: X = {corrected_cx}, Y = {corrected_cy}) below threshold {confidence_threshold}")
+            #     continue
             
             #grid_col = min(max(int(corrected_cx // 64), 0), 7)
             #grid_row = min(max(int(corrected_cy // 64), 0), 7)
