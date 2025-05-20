@@ -25,11 +25,16 @@ def map_point_homography(point, H):
 
 def rotate_grid(row, col, orientation):
     match orientation:
-        case "bottom": return row, col
-        case "top": return 7 - row, 7 - col
-        case "left": return col, row
-        case "right": return 7 - col, 7 - row
-        case _: raise ValueError(f"Invalid orientation: {orientation}")
+        case "bottom":
+            return row, col
+        case "top":
+            return 7 - row, 7 - col
+        case "left":
+            return col, row
+        case "right":
+            return 7 - col, 7 - row
+        case _:
+            raise ValueError(f"Invalid orientation: {orientation}")
 
 
 def to_fen_board_coords(board):
@@ -60,10 +65,18 @@ def generate_full_fen(board, orientation):
 def detections_to_fen(detections, orientation):
     board = [["" for _ in range(8)] for _ in range(8)]
     yolo_to_fen = {
-        "white-pawn": "P", "white-rook": "R", "white-knight": "N",
-        "white-bishop": "B", "white-queen": "Q", "white-king": "K",
-        "black-pawn": "p", "black-rook": "r", "black-knight": "n",
-        "black-bishop": "b", "black-queen": "q", "black-king": "k"
+        "white-pawn": "P",
+        "white-rook": "R",
+        "white-knight": "N",
+        "white-bishop": "B",
+        "white-queen": "Q",
+        "white-king": "K",
+        "black-pawn": "p",
+        "black-rook": "r",
+        "black-knight": "n",
+        "black-bishop": "b",
+        "black-queen": "q",
+        "black-king": "k",
     }
     for det in detections:
         row, col = det["row"], det["col"]
@@ -93,7 +106,9 @@ def detect_chess_board(model: YOLO, img: Image.Image, orientation):
         if result.boxes is None:
             raise RuntimeError("Model found no boxes in the image!")
 
-        for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
+        for box, conf, cls in zip(
+            result.boxes.xyxy, result.boxes.conf, result.boxes.cls
+        ):
             x1, y1, x2, y2 = box
             cx = (x1 + x2) / 2
             cy = y2 - 0.25 * (y2 - y1)
@@ -103,7 +118,9 @@ def detect_chess_board(model: YOLO, img: Image.Image, orientation):
 
             # Skip detections outside the playable 8x8 grid
             if not (0 <= grid_x < 8 and 0 <= grid_y < 8):
-                print(f"[SKIPPED] Detection at ({cx.item():.1f}, {cy.item():.1f}) mapped to ({grid_x:.2f}, {grid_y:.2f}) → outside board")
+                print(
+                    f"[SKIPPED] Detection at ({cx.item():.1f}, {cy.item():.1f}) mapped to ({grid_x:.2f}, {grid_y:.2f}) → outside board"
+                )
                 continue
 
             col = min(max(int(grid_x), 0), 7)
@@ -111,13 +128,15 @@ def detect_chess_board(model: YOLO, img: Image.Image, orientation):
 
             row, col = rotate_grid(row, col, orientation)
 
-            detections.append({
-                "row": row,
-                "col": col,
-                "grid": (row, col),
-                "center": (cx.item(), cy.item()),
-                "label": result.names[int(cls)],
-                "confidence": conf.item()
-            })
+            detections.append(
+                {
+                    "row": row,
+                    "col": col,
+                    "grid": (row, col),
+                    "center": (cx.item(), cy.item()),
+                    "label": result.names[int(cls)],
+                    "confidence": conf.item(),
+                }
+            )
 
     return ChessDetectionResult(processed_img, detections, H, orientation)
