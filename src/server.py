@@ -16,6 +16,7 @@ if not model_path or not os.path.isfile(model_path):
 app.config["MODEL_PATH"] = model_path
 app.config["MODEL"] = YOLO(model_path)
 
+
 # ===== Endpoint: Parse Board and Return FEN =====
 @app.post("/parse-board")
 def parse_board(req: Request) -> Response:
@@ -29,7 +30,9 @@ def parse_board(req: Request) -> Response:
 
     try:
         result = detect_chess_board(
-            app.config["MODEL"], Image.open(BytesIO(req.data)), req.args["orientation"]
+            app.config["MODEL"],
+            Image.open(BytesIO(req.data)),
+            orientation=req.args["orientation"],
         )
         return Response(result.fen, 200)
     except Exception as e:
