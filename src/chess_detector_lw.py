@@ -86,7 +86,7 @@ class ChessDetectionResult:
 def detect_chess_board(model: YOLO, img: Image.Image, orientation):
     processed_img = img.convert("RGB").resize(TARGET_SIZE, Image.Resampling.LANCZOS)
     H = compute_homography(TRAPEZIUM_CORNERS)
-    results = model.predict(processed_img, imgsz=640)
+    results = model.predict(processed_img, imgsz=416)
 
     detections = []
     for result in results:
