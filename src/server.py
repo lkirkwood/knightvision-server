@@ -1,4 +1,4 @@
-from flask import Flask, Request, Response
+from flask import Flask, Request, Response, request
 from PIL import Image
 from ultralytics import YOLO
 from chess_detector import detect_chess_board
@@ -28,7 +28,8 @@ app.config["BOARD_ISO_EXE"] = board_iso_path
 
 # ===== Endpoint: Parse Board and Return FEN =====
 @app.post("/parse-board")
-def parse_board(req: Request) -> Response:
+def parse_board() -> Response:
+    req: Request = request
     match req.mimetype:
         case "image/png":
             input_img_fext = "png"
