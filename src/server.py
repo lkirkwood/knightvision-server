@@ -35,6 +35,8 @@ def parse_board() -> Response:
             input_img_fext = "png"
         case "image/jpg" | "image/jpeg":
             input_img_fext = "jpeg"
+        case "image/webp":
+            input_img_fext = "webp"
         case other:
             return Response(f"Unexpected MIME type {other}; Expected PNG or JPG", 400)
 
