@@ -46,8 +46,8 @@ def parse_board() -> Response:
 
     input_img = Image.open(BytesIO(req.data))
     input_img_height, input_img_width = input_img.size
-    top = (input_img_height / 2) + (input_img_width / 2)
-    bottom = (input_img_height / 2) - (input_img_width / 2)
+    top = (input_img_height / 2) - (input_img_width / 2)
+    bottom = (input_img_height / 2) + (input_img_width / 2)
     input_img = input_img.crop((0, top, input_img_width, bottom))
 
     with TemporaryDirectory() as tmpdir:
