@@ -1,9 +1,12 @@
 from flask import Flask, Request, Response
 from PIL import Image
-from io import BytesIO
 from ultralytics import YOLO
 from chess_detector import detect_chess_board
 import os
+import subprocess
+import numpy as np
+from tempfile import TemporaryDirectory
+from io import BytesIO
 
 app = Flask(__name__)
 
@@ -13,27 +16,62 @@ model_path = os.getenv("MODEL_PATH")
 if not model_path or not os.path.isfile(model_path):
     raise RuntimeError("Missing or invalid MODEL_PATH environment variable.")
 
+board_iso_path = os.getenv("BOARD_ISO_EXE")
+
+if not board_iso_path or not os.path.isfile(board_iso_path):
+    raise RuntimeError("Missing or invalid BOARD_ISO_EXE environment variable.")
+
 app.config["MODEL_PATH"] = model_path
 app.config["MODEL"] = YOLO(model_path)
+app.config["BOARD_ISO_EXE"] = board_iso_path
 
 
 # ===== Endpoint: Parse Board and Return FEN =====
 @app.post("/parse-board")
 def parse_board(req: Request) -> Response:
-    if req.mimetype not in ("image/png", "image/jpg", "image/jpeg"):
-        return Response(
-            f"Unexpected MIME type {req.mimetype}; Expected PNG or JPG", 400
-        )
+    match req.mimetype:
+        case "image/png":
+            input_img_fext = "png"
+        case "image/jpg" | "image/jpeg":
+            input_img_fext = "jpeg"
+        case other:
+            return Response(f"Unexpected MIME type {other}; Expected PNG or JPG", 400)
 
-    if "orientation" not in req.args:
-        return Response("Expected a board orientation parameter.", 400)
+    if "orientation" in req.args:
+        orientation = req.args["orientation"]
+    else:
+        # return Response("Expected a board orientation parameter.", 400)
+        orientation = "left"
 
-    try:
-        result = detect_chess_board(
-            app.config["MODEL"],
-            Image.open(BytesIO(req.data)),
-            orientation=req.args["orientation"],
-        )
-        return Response(result.fen, 200)
-    except Exception as e:
-        return Response(f"Error processing image: {e}", 500)
+    with TemporaryDirectory() as tmpdir:
+        try:
+            input_path = os.path.join(tmpdir, f"input.{input_img_fext}")
+            output_img_path = os.path.join(tmpdir, "output.jpg")
+            output_homog_path = os.path.join(tmpdir, "homography.npy")
+            with open(input_path, "wb") as stream:
+                stream.write(req.data)
+
+            subprocess.check_call(
+                [
+                    app.config["BOARD_ISO_EXE"],
+                    input_path,
+                    output_img_path,
+                    output_homog_path,
+                ]
+            )
+            homography = np.load(output_homog_path)
+        except Exception as exc:
+            print(exc)
+            return Response(f"Error processing image: {exc}", 500)
+
+        try:
+            result = detect_chess_board(
+                app.config["MODEL"],
+                Image.open(BytesIO(req.data)),
+                homography_matrix=homography,
+                orientation=orientation,
+            )
+            return Response(result.fen, 200)
+        except Exception as exc:
+            print(exc)
+            return Response(f"Error detecting board state: {exc}", 500)
