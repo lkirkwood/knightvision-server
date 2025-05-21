@@ -4,7 +4,7 @@ import cv2
 from PIL import Image
 
 # Constants
-TARGET_SIZE = (416, 416)
+TARGET_SIZE = (512, 512)
 TRAPEZIUM_CORNERS = np.array(
     [[74, 20], [316, 27], [371, 341], [37, 346]], dtype=np.float32
 )
