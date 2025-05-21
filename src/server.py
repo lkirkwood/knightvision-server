@@ -44,13 +44,19 @@ def parse_board() -> Response:
         # return Response("Expected a board orientation parameter.", 400)
         orientation = "left"
 
+    input_img = Image.open(BytesIO(req.data))
+    input_img_height, input_img_width = input_img.size
+    top = (input_img_height / 2) + (input_img_width / 2)
+    bottom = (input_img_height / 2) - (input_img_width / 2)
+    input_img = input_img.crop((0, top, input_img_width, bottom))
+
     with TemporaryDirectory() as tmpdir:
         try:
             input_path = os.path.join(tmpdir, f"input.{input_img_fext}")
+            input_img.save(input_path)
+
             output_img_path = os.path.join(tmpdir, "output.jpg")
             output_homog_path = os.path.join(tmpdir, "homography.npy")
-            with open(input_path, "wb") as stream:
-                stream.write(req.data)
 
             subprocess.check_call(
                 [
@@ -68,7 +74,7 @@ def parse_board() -> Response:
         try:
             result = detect_chess_board(
                 app.config["MODEL"],
-                Image.open(BytesIO(req.data)),
+                input_img,
                 homography_matrix=homography,
                 orientation=orientation,
             )
