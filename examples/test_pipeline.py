@@ -14,17 +14,15 @@ from chess_detector import detect_chess_board
 from visualisation_utils import (
     compare_images,
     map_bounding_boxes,
-    map_corner_projection,
-    display_FEN
+    map_corner_projection
 )
 
 # ===== Configuration =====
-IMAGE_ID = "full_board_bottom"
-IMAGE_SUBSET = "test"
-model_path = "./model/best.pt"
-original_image_path = f"./TESTING/our_chess_images/raw/{IMAGE_ID}.jpg"
-corrected_image_path = f"./TESTING/our_chess_images/corrected/{IMAGE_ID}.jpg"
-cumulative_homography_matrix_path = f"./TESTING/our_chess_images/corrected/{IMAGE_ID}.npy"
+IMAGE_ID = "38_jpg.rf.5721f8bc9a1eb379ec89b72cece2017f"
+model_path = "./knight_vision_detector.pt"
+original_image_path = f"./examples/original_images/{IMAGE_ID}.jpg"
+corrected_image_path = f"./examples/perspective_corrections/{IMAGE_ID}.jpg"
+cumulative_homography_matrix_path = f"./examples/perspective_corrections/{IMAGE_ID}.npy"
 orientation = "bottom"  # Options: "top", "bottom", "left", "right"
 
 # ===== Load Model & Inputs =====
@@ -55,4 +53,3 @@ compare_images(original_image, corrected_image)
 map_bounding_boxes(original_image, result.raw_detections, "Original Image")
 map_bounding_boxes(corrected_image, result.corrected_detections,  "Corrected Image")
 map_corner_projection(original_image, corrected_image, homography_matrix)
-display_FEN(result.fen)

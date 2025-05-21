@@ -77,36 +77,3 @@ def map_corner_projection(original_image, corrected_image, homography_matrix):
     plt.title("Projected Corners on Original | Corrected Image")
     plt.axis("off")
     plt.show()
-
-# ===== 4. FEN-Based Digital Board Visualisation =====
-def display_FEN(fen_string):
-    square_size = 64
-    board_img = Image.new("RGB", (512, 512), "white")
-    draw = ImageDraw.Draw(board_img)
-    font = ImageFont.load_default()
-
-    # Draw 8x8 board
-    for row in range(8):
-        for col in range(8):
-            fill = "#EEE" if (row + col) % 2 == 0 else "#555"
-            draw.rectangle([col*square_size, row*square_size, (col+1)*square_size, (row+1)*square_size], fill=fill)
-
-    # Fill in pieces
-    fen_parts = fen_string.split()
-    rows = fen_parts[0].split('/')
-    for r_idx, fen_row in enumerate(rows):
-        c_idx = 0
-        for char in fen_row:
-            if char.isdigit():
-                c_idx += int(char)
-            else:
-                x = c_idx * square_size + 20
-                y = r_idx * square_size + 20
-                draw.text((x, y), char, fill="yellow", font=font)
-                c_idx += 1
-
-    plt.figure(figsize=(6, 6))
-    plt.imshow(board_img)
-    plt.title("FEN-Based Board Visualisation")
-    plt.axis("off")
-    plt.show()
