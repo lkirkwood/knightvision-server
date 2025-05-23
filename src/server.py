@@ -1,5 +1,5 @@
 from flask import Flask, Request, Response, request
-from PIL import Image
+from PIL import Image, ExifTags
 from ultralytics import YOLO
 from chess_detector import detect_chess_board
 import os
@@ -26,6 +26,35 @@ app.config["MODEL"] = YOLO(model_path)
 app.config["BOARD_ISO_EXE"] = board_iso_path
 
 
+def process_input_img(img: Image.Image) -> Image.Image:
+    # Get orientation tag ID
+    orientation_tag = None
+    for tag in ExifTags.TAGS:
+        if ExifTags.TAGS[tag] == "Orientation":
+            orientation_tag = tag
+            break
+
+    if orientation_tag is not None:
+        exif = img._getexif()
+        if exif is not None:
+            orientation = exif.get(orientation_tag, None)
+            if orientation == 3:
+                img = img.rotate(180, expand=True)
+            elif orientation == 6:
+                img = img.rotate(270, expand=True)
+            elif orientation == 8:
+                img = img.rotate(90, expand=True)
+
+    img_width, img_height = img.size
+    print(f"height: {img_height}, width: {img_width}")
+    top = (img_height / 2) - (img_width / 2)
+    bottom = (img_height / 2) + (img_width / 2)
+    print(f"top: {top}, bottom: {bottom}")
+    img = img.crop((0, top, img_width, bottom)).resize((512, 512))
+
+    return img
+
+
 # ===== Endpoint: Parse Board and Return FEN =====
 @app.post("/parse-board")
 def parse_board() -> Response:
@@ -46,11 +75,8 @@ def parse_board() -> Response:
         # return Response("Expected a board orientation parameter.", 400)
         orientation = "left"
 
-    input_img = Image.open(BytesIO(req.data))
-    input_img_height, input_img_width = input_img.size
-    top = (input_img_height / 2) - (input_img_width / 2)
-    bottom = (input_img_height / 2) + (input_img_width / 2)
-    input_img = input_img.crop((0, top, input_img_width, bottom)).resize((512, 512))
+    input_img = process_input_img(Image.open(BytesIO(req.data)))
+    input_img.save("/tmp/last-input.jpg")
 
     with TemporaryDirectory() as tmpdir:
         try:
