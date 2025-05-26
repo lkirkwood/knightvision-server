@@ -8,6 +8,7 @@ import subprocess
 import numpy as np
 from tempfile import TemporaryDirectory
 from io import BytesIO
+import json
 
 from openings import load_openings
 
@@ -121,7 +122,7 @@ def parse_board() -> Response:
             if opening is not None:
                 response["opening"] = {"name": opening.name, "moves": opening.moves}
 
-            return Response(response, 200)
+            return Response(json.dumps(response), 200)
         except Exception as exc:
             print(exc)
             return Response(f"Error detecting board state: {exc}", 500)
