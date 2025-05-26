@@ -6,12 +6,12 @@ from typing import Optional
 class Opening:
     eco_idx: str
     name: str
-    moves: list[tuple[str, Optional[str]]]
+    moves: list[list[str]]
 
 
-def process_movelist(moves: str) -> list[tuple[str, Optional[str]]]:
+def process_movelist(moves: str) -> list[list[str]]:
     movelist = map(lambda block: block.strip().split(), moves.split(".")[1:])
-    return [(block[0], block[1] if len(block) > 1 else None) for block in movelist]
+    return [[block[i] for i in range(min(len(block), 2))] for block in movelist]
 
 
 def load_openings(path: str) -> dict[str, Opening]:
