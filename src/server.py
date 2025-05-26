@@ -8,6 +8,8 @@ import numpy as np
 from tempfile import TemporaryDirectory
 from io import BytesIO
 
+from openings import load_openings
+
 app = Flask(__name__)
 
 # ===== Load Model from Environment Variable =====
@@ -21,9 +23,16 @@ board_iso_path = os.getenv("BOARD_ISO_EXE")
 if not board_iso_path or not os.path.isfile(board_iso_path):
     raise RuntimeError("Missing or invalid BOARD_ISO_EXE environment variable.")
 
+openings_book = os.getenv("OPENINGS_PATH")
+
+if not openings_book or not os.path.isfile(openings_book):
+    raise RuntimeError("Missing or invalid OPENINGS_PATH environment variable.")
+
+
 app.config["MODEL_PATH"] = model_path
 app.config["MODEL"] = YOLO(model_path)
 app.config["BOARD_ISO_EXE"] = board_iso_path
+app.config["OPENINGS"] = load_openings(openings_book)
 
 
 def process_input_img(img: Image.Image) -> Image.Image:
@@ -35,7 +44,7 @@ def process_input_img(img: Image.Image) -> Image.Image:
             break
 
     if orientation_tag is not None:
-        exif = img._getexif()
+        exif = img._getexif()  # type: ignore
         if exif is not None:
             orientation = exif.get(orientation_tag, None)
             if orientation == 3:
@@ -106,7 +115,12 @@ def parse_board() -> Response:
                 homography_matrix=homography,
                 orientation=orientation,
             )
-            return Response(result.fen, 200)
+            response = {"fen": result.fen}
+            opening = app.config["OPENINGS"].get(result.fen)
+            if opening is not None:
+                response["opening"] = opening.name
+
+            return Response(response, 200)
         except Exception as exc:
             print(exc)
             return Response(f"Error detecting board state: {exc}", 500)
