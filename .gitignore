@@ -25,3 +25,5 @@ venv/
 # TEMP
 *dataset
 *testing
+examples/perspective_corrections
+examples/original_images

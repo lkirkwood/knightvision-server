@@ -101,8 +101,6 @@ def map_point_to_board_space(point: tuple[float, float], homography_matrix: np.n
     """Projects a point (x, y) from the original image space into the 512x512 perspective-corrected board space."""
     # Convert 2D pixel-point to Homogeneous Coordinates for matrix projection ((x,y) → (x, y, 1))
     homogenous_point  = np.array([point[0], point[1], 1]).reshape(3, 1)
-    
-    #inverse_homography_matrix = np.linalg.inv(homography_matrix)
 
     # Apply homography matrix to warp the point into corrected space
     warped_point = np.dot(homography_matrix, homogenous_point)

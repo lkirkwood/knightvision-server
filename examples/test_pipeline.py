@@ -18,12 +18,12 @@ from visualisation_utils import (
 )
 
 # ===== Configuration =====
-IMAGE_ID = "38_jpg.rf.5721f8bc9a1eb379ec89b72cece2017f"
+IMAGE_ID = "live_test1"
 model_path = "./knight_vision_detector.pt"
 original_image_path = f"./examples/original_images/{IMAGE_ID}.jpg"
 corrected_image_path = f"./examples/perspective_corrections/{IMAGE_ID}.jpg"
 cumulative_homography_matrix_path = f"./examples/perspective_corrections/{IMAGE_ID}.npy"
-orientation = "bottom"  # Options: "top", "bottom", "left", "right"
+orientation = "left"  # Options: "top", "bottom", "left", "right"
 
 # ===== Load Model & Inputs =====
 model = YOLO(model_path)
