@@ -18,7 +18,7 @@ from visualisation_utils import (
 )
 
 # ===== Configuration =====
-IMAGE_ID = "live_test1"
+IMAGE_ID = "test_image"
 model_path = "./knight_vision_detector.pt"
 original_image_path = f"./examples/original_images/{IMAGE_ID}.jpg"
 corrected_image_path = f"./examples/perspective_corrections/{IMAGE_ID}.jpg"

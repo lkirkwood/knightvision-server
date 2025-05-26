@@ -58,45 +58,6 @@ class BoardOrientation:
             case "right": return np.rot90(arr, k=3).tolist()    # Rotate 90°   (Clockwise)
 
 
-
-def detections_to_board(detections):
-    board = [["" for _ in range(8)] for _ in range(8)]
-    yolo_to_fen_mapping = {
-        "white-pawn": "P", "white-rook": "R", "white-knight": "N",
-        "white-bishop": "B", "white-queen": "Q", "white-king": "K",
-        "black-pawn": "p", "black-rook": "r", "black-knight": "n",
-        "black-bishop": "b", "black-queen": "q", "black-king": "k"
-    }
-    for detected_piece in detections:
-        row, col = detected_piece["row"], detected_piece["col"]
-        piece_label = detected_piece["label"]
-        piece_name = yolo_to_fen_mapping.get(piece_label.lower(), "")
-        board[row][col] = piece_name
-    return board
-
-
-def board_to_fen(board: list[list[str]]) -> str:
-    fen_rows = []
-    for row in board:
-        fen_row = ""
-        empty_cells_in_row = 0
-        for cell in row:
-            if cell == "":
-                empty_cells_in_row += 1
-            else:
-                if empty_cells_in_row > 0:
-                    fen_row += str(empty_cells_in_row)
-                    empty_cells_in_row = 0
-                fen_row += cell
-        if empty_cells_in_row > 0:
-            fen_row += str(empty_cells_in_row)
-        fen_rows.append(fen_row)
-    piece_placement = "/".join(fen_rows)
-    castling_options = "-"
-    fen = f"{piece_placement} w {castling_options} - 0 1"
-    return fen
-
-
 def map_point_to_board_space(point: tuple[float, float], homography_matrix: np.ndarray) -> tuple[float, float]:
     """Projects a point (x, y) from the original image space into the 512x512 perspective-corrected board space."""
     # Convert 2D pixel-point to Homogeneous Coordinates for matrix projection ((x,y) → (x, y, 1))
@@ -146,7 +107,71 @@ def debug_log_bounding_box_mappings(
         grid_row = min(max(int(corrected_y // 64), 0), 7)
         print(f"Mapped to grid square: row={grid_row}, col={grid_col}")
 
+def get_piece_on_square(board: list[list[str]], square: str) -> str:
+    """
+    Returns the piece located on the given square in algebraic notation (e.g., 'e1').
+    If the square is empty, returns an empty string.
+    """
+    file_map = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
+    rank_map = {"8": 0, "7": 1, "6": 2, "5": 3, "4": 4, "3": 5, "2": 6, "1": 7}
 
+    col = file_map[square[0]]
+    row = rank_map[square[1]]
+    return board[row][col]
+
+def get_castling_rights(board: list[list[str]]) -> str:
+    castling_requirements = {
+        "K": ("e1", "h1", "K", "R"),
+        "Q": ("e1", "a1", "K", "R"),
+        "k": ("e8", "h8", "k", "r"),
+        "q": ("e8", "a8", "k", "r")
+    }
+    castling_rights = ""
+    for castling_type, (king_square, rook_square, king_piece, rook_piece) in castling_requirements.items():
+        if (
+            get_piece_on_square(board, king_square) == king_piece and
+            get_piece_on_square(board, rook_square) == rook_piece
+        ):
+            castling_rights += castling_type
+    return castling_rights or "-"   # return first "truthy" value
+
+def detections_to_board(detections):
+    board = [["" for _ in range(8)] for _ in range(8)]
+    yolo_to_fen_mapping = {
+        "white-pawn": "P", "white-rook": "R", "white-knight": "N",
+        "white-bishop": "B", "white-queen": "Q", "white-king": "K",
+        "black-pawn": "p", "black-rook": "r", "black-knight": "n",
+        "black-bishop": "b", "black-queen": "q", "black-king": "k"
+    }
+    for detected_piece in detections:
+        row, col = detected_piece["row"], detected_piece["col"]
+        piece_label = detected_piece["label"]
+        piece_name = yolo_to_fen_mapping.get(piece_label.lower(), "")
+        board[row][col] = piece_name
+    return board
+
+
+def board_to_fen(board: list[list[str]]) -> str:
+    fen_rows = []
+    for row in board:
+        fen_row = ""
+        empty = 0
+        for cell in row:
+            if cell == "":
+                empty += 1
+            else:
+                if empty > 0:
+                    fen_row += str(empty)
+                    empty = 0
+                fen_row += cell
+        if empty > 0:
+            fen_row += str(empty)
+        fen_rows.append(fen_row)
+
+    piece_placement = "/".join(fen_rows)
+    castling_rights = get_castling_rights(board)
+    fen = f"{piece_placement} w {castling_rights} - 0 1"
+    return fen
 
 
 # ===== Main API-Friendly Wrapper =====
