@@ -1,3 +1,4 @@
+from typing import Any
 from flask import Flask, Request, Response, request
 from PIL import Image, ExifTags
 from ultralytics import YOLO
@@ -115,10 +116,10 @@ def parse_board() -> Response:
                 homography_matrix=homography,
                 orientation=orientation,
             )
-            response = {"fen": result.fen}
+            response: dict[str, Any] = {"fen": result.fen}
             opening = app.config["OPENINGS"].get(result.fen)
             if opening is not None:
-                response["opening"] = opening.name
+                response["opening"] = {"name": opening.name, "moves": opening.moves}
 
             return Response(response, 200)
         except Exception as exc:
