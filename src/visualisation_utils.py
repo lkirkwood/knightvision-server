@@ -22,13 +22,6 @@ def compare_images(img1: Image.Image, img2: Image.Image, label1="Original", labe
 def map_bounding_boxes(image, detections, title, box_color="cyan"):
     image = image.copy()
     draw = ImageDraw.Draw(image)
-    
-    # def get_square_name(row, col):
-    #     """Maps (row, col) directly to algebraic notation assuming white is at bottom."""
-    #     files = "abcdefgh"
-    #     ranks = "87654321"  # top row is rank 8, bottom is rank 1
-    #     return f"{files[col]}{ranks[row]}"  # no rotation applied, already canonical
-
     for det in detections:
         # Draw bounding box
         if "box" in det:

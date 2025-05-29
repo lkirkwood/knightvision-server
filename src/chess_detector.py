@@ -223,13 +223,13 @@ def detect_chess_board(
     predictions = model.predict(original_image.convert("RGB"), imgsz=512)
 
     corrected_detections = []  # renamed for clarity
-    raw_detections = []        # optional: store untransformed bounding boxes (in original image space)
+    raw_detections = []        # store untransformed bounding boxes (in original image space)
 
     board_orientation = BoardOrientation(orientation)
 
     for prediction in predictions:
         if prediction.boxes is None:
-            raise RuntimeError("Model Found No Boxes in the Image!")
+            raise RuntimeError("Model Found No BBoxes in the Image!")
         
 
 
